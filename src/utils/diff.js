@@ -29,22 +29,50 @@ export const computeDiff = (obj1, obj2, path = '') => {
 
   // If one is undefined (meaning it's added or removed from an object)
   if (obj1 === undefined) {
+    let children = undefined;
+    if (type2 === 'object' && obj2 !== null) {
+      children = {};
+      Object.keys(obj2).sort().forEach(key => {
+        children[key] = computeDiff(undefined, obj2[key], path ? `${path}.${key}` : key);
+      });
+    } else if (type2 === 'array') {
+      children = {};
+      for(let i=0; i<obj2.length; i++) {
+        children[i] = computeDiff(undefined, obj2[i], `${path}[${i}]`);
+      }
+    }
+
     return {
       path,
       type: DIFF_TYPES.ADDED,
       val1: undefined,
       val2: obj2,
-      dataType: type2
+      dataType: type2,
+      children
     };
   }
   
   if (obj2 === undefined) {
+    let children = undefined;
+    if (type1 === 'object' && obj1 !== null) {
+      children = {};
+      Object.keys(obj1).sort().forEach(key => {
+        children[key] = computeDiff(obj1[key], undefined, path ? `${path}.${key}` : key);
+      });
+    } else if (type1 === 'array') {
+      children = {};
+      for(let i=0; i<obj1.length; i++) {
+        children[i] = computeDiff(obj1[i], undefined, `${path}[${i}]`);
+      }
+    }
+
     return {
       path,
       type: DIFF_TYPES.REMOVED,
       val1: obj1,
       val2: undefined,
-      dataType: type1
+      dataType: type1,
+      children
     };
   }
 
@@ -80,6 +108,8 @@ export const computeDiff = (obj1, obj2, path = '') => {
       type: DIFF_TYPES.UNCHANGED, // The array itself is 'unchanged' in reference concept, but might have changes inside
       hasChanges,
       dataType: 'array',
+      val1: obj1,
+      val2: obj2,
       children
     };
   }
@@ -104,6 +134,8 @@ export const computeDiff = (obj1, obj2, path = '') => {
       type: DIFF_TYPES.UNCHANGED,
       hasChanges,
       dataType: 'object',
+      val1: obj1,
+      val2: obj2,
       children
     };
   }

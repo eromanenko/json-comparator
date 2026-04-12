@@ -5,7 +5,7 @@ export default function DiffView({ diffResult, stats, onReset }) {
   const [showMissing, setShowMissing] = useState(true);
   const [showDifferentTypes, setShowDifferentTypes] = useState(true);
   const [showDifferentValues, setShowDifferentValues] = useState(true);
-  const [showMargins, setShowMargins] = useState(false);
+  const [collapsedPaths, setCollapsedPaths] = useState(new Set());
 
   const leftPaneRef = useRef(null);
   const rightPaneRef = useRef(null);
@@ -28,6 +28,35 @@ export default function DiffView({ diffResult, stats, onReset }) {
       leftPaneRef.current.scrollTop = e.target.scrollTop;
     }
     window.requestAnimationFrame(() => { isScrollingRef.current = false; });
+  };
+
+  const toggleCollapse = (path) => {
+    setCollapsedPaths(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const expandAll = () => setCollapsedPaths(new Set());
+
+  const collapseAll = () => {
+    const getAllPaths = (node) => {
+      let paths = [];
+      if (node.dataType === 'object' || node.dataType === 'array') {
+        if (node.path !== '') paths.push(node.path);
+        if (node.children) {
+          Object.values(node.children).forEach(child => {
+            paths = paths.concat(getAllPaths(child));
+          });
+        }
+      }
+      return paths;
+    };
+    if (diffResult) {
+      setCollapsedPaths(new Set(getAllPaths(diffResult)));
+    }
   };
 
   // Checks if a node should be visible based on filters
@@ -81,53 +110,117 @@ export default function DiffView({ diffResult, stats, onReset }) {
     </>
   );
 
-  const getMarginStyle = (indent) => {
-    return showMargins ? { paddingLeft: `calc(1rem + ${indent * 24}px)` } : {};
-  };
+  const indentSpaceFn = (indent) => '  '.repeat(indent);
+
+  const renderKey = (key) => key !== null ? <><span style={styles.jsonKey}>"{key}"</span><span style={styles.jsonColon}>: </span></> : null;
 
   const renderTreeRows = (node, indent = 0, key = null, isLast = true) => {
     const rows = [];
-    const indentSpace = showMargins ? '' : '  '.repeat(indent);
+    const indentSpace = indentSpaceFn(indent);
     const isFilteredOut = !isVisible(node.type);
 
-    if (node.dataType === 'object' || node.dataType === 'array') {
-      const isArray = node.dataType === 'array';
-      const openBracket = isArray ? '[' : '{';
-      const closeBracket = isArray ? ']' : '}';
-      
-      rows.push({
-        left: (
-          <div key={`${node.path}-open-left`} style={{...styles.line, ...getRowStyle(DIFF_TYPES.UNCHANGED, 'left'), ...getMarginStyle(indent)}}>
-            {indentSpace}{key !== null ? `"${key}": ` : ''}{openBracket}
-          </div>
-        ),
-        right: (
-          <div key={`${node.path}-open-right`} style={{...styles.line, ...getRowStyle(DIFF_TYPES.UNCHANGED, 'right'), ...getMarginStyle(indent)}}>
-            {indentSpace}{key !== null ? `"${key}": ` : ''}{openBracket}
-          </div>
-        )
-      });
+    let typeLeft = node.dataType;
+    let typeRight = node.dataType;
+    if (node.type === DIFF_TYPES.CHANGED_TYPE) {
+      typeLeft = node.dataType1;
+      typeRight = node.dataType2;
+    } else if (node.type === DIFF_TYPES.ADDED) {
+      typeLeft = undefined;
+    } else if (node.type === DIFF_TYPES.REMOVED) {
+      typeRight = undefined;
+    }
 
-      if (node.children) {
-        const childKeys = Object.keys(node.children);
-        childKeys.forEach((ckey, idx) => {
-          const childLast = idx === childKeys.length - 1;
-          rows.push(...renderTreeRows(node.children[ckey], indent + 1, ckey, childLast));
-        });
+    const isTreeLeft = typeLeft === 'object' || typeLeft === 'array';
+    const isTreeRight = typeRight === 'object' || typeRight === 'array';
+
+    const isEmptyLeft = isTreeLeft && Object.keys(node.val1 || {}).length === 0;
+    const isEmptyRight = isTreeRight && Object.keys(node.val2 || {}).length === 0;
+
+    const renderAsTree = (isTreeLeft && !isEmptyLeft) || (isTreeRight && !isEmptyRight);
+
+    if (renderAsTree) {
+      const isArrayLeft = typeLeft === 'array';
+      const isArrayRight = typeRight === 'array';
+      const isCollapsed = collapsedPaths.has(node.path);
+      
+      const openBracketLeft = isTreeLeft ? (isArrayLeft ? (isCollapsed ? '[ ... ]' : '[') : (isCollapsed ? '{ ... }' : '{')) : '';
+      const closeBracketLeft = isTreeLeft ? (isArrayLeft ? ']' : '}') : '';
+
+      const openBracketRight = isTreeRight ? (isArrayRight ? (isCollapsed ? '[ ... ]' : '[') : (isCollapsed ? '{ ... }' : '{')) : '';
+      const closeBracketRight = isTreeRight ? (isArrayRight ? ']' : '}') : '';
+      
+      const toggleIcon = (
+        <span 
+          onClick={() => toggleCollapse(node.path)}
+          style={styles.toggleIcon}
+          title={isCollapsed ? "Expand" : "Collapse"}
+        >
+          {isCollapsed ? '▸' : '▾'}
+        </span>
+      );
+      
+      const comma = (!isLast && isCollapsed) ? ',' : '';
+      
+      let leftShow = node.type !== DIFF_TYPES.ADDED;
+      let rightShow = node.type !== DIFF_TYPES.REMOVED;
+      
+      let leftContentOpen = '';
+      if (leftShow) {
+        if (isTreeLeft && !isEmptyLeft) leftContentOpen = <>{renderKey(key)}<span style={styles.jsonComma}>{openBracketLeft + comma}</span></>;
+        else leftContentOpen = formatPair(key, node.val1, typeLeft, isLast && node.type !== DIFF_TYPES.REMOVED);
+      }
+      
+      let rightContentOpen = '';
+      if (rightShow) {
+        if (isTreeRight && !isEmptyRight) rightContentOpen = <>{renderKey(key)}<span style={styles.jsonComma}>{openBracketRight + comma}</span></>;
+        else rightContentOpen = formatPair(key, node.val2, typeRight, isLast && node.type !== DIFF_TYPES.ADDED);
       }
 
       rows.push({
         left: (
-          <div key={`${node.path}-close-left`} style={{...styles.line, ...getRowStyle(DIFF_TYPES.UNCHANGED, 'left'), ...getMarginStyle(indent)}}>
-             {indentSpace}{closeBracket}{!isLast && ','}
+          <div key={`${node.path}-open-left`} style={{...styles.line, ...getRowStyle(node.type, 'left')}}>
+            {isTreeLeft && !isEmptyLeft && toggleIcon}
+            <span>
+              {indentSpace}{leftContentOpen}
+            </span>
           </div>
         ),
         right: (
-          <div key={`${node.path}-close-right`} style={{...styles.line, ...getRowStyle(DIFF_TYPES.UNCHANGED, 'right'), ...getMarginStyle(indent)}}>
-             {indentSpace}{closeBracket}{!isLast && ','}
+          <div key={`${node.path}-open-right`} style={{...styles.line, ...getRowStyle(node.type, 'right')}}>
+            {isTreeRight && !isEmptyRight && toggleIcon}
+            <span>
+              {indentSpace}{rightContentOpen}
+            </span>
           </div>
         )
       });
+
+      if (!isCollapsed) {
+        if (node.children) {
+          const childKeys = Object.keys(node.children);
+          childKeys.forEach((ckey, idx) => {
+            const childLast = idx === childKeys.length - 1;
+            rows.push(...renderTreeRows(node.children[ckey], indent + 1, ckey, childLast));
+          });
+        }
+
+        rows.push({
+          left: (
+            <div key={`${node.path}-close-left`} style={{...styles.line, ...getRowStyle(node.type, 'left')}}>
+               <span>
+                 {indentSpace}{leftShow && isTreeLeft && !isEmptyLeft ? <>{closeBracketLeft}{!isLast && <span style={styles.jsonComma}>,</span>}</> : ''}
+               </span>
+            </div>
+          ),
+          right: (
+            <div key={`${node.path}-close-right`} style={{...styles.line, ...getRowStyle(node.type, 'right')}}>
+               <span>
+                 {indentSpace}{rightShow && isTreeRight && !isEmptyRight ? <>{closeBracketRight}{!isLast && <span style={styles.jsonComma}>,</span>}</> : ''}
+               </span>
+            </div>
+          )
+        });
+      }
       
     } else {
       // It's a leaf node
@@ -139,15 +232,19 @@ export default function DiffView({ diffResult, stats, onReset }) {
 
       rows.push({
         left: (
-          <div key={`${node.path}-left`} style={{...styles.line, ...getRowStyle(node.type, 'left'), ...getMarginStyle(indent)}}>
-            {indentSpace}
-            {leftShow ? formatPair(key, node.val1, typeLeft, isLast && node.type !== DIFF_TYPES.REMOVED) : ''}
+          <div key={`${node.path}-left`} style={{...styles.line, ...getRowStyle(node.type, 'left')}}>
+            <span>
+              {indentSpace}
+              {leftShow ? formatPair(key, node.val1, typeLeft, isLast && node.type !== DIFF_TYPES.REMOVED) : ''}
+            </span>
           </div>
         ),
         right: (
-          <div key={`${node.path}-right`} style={{...styles.line, ...getRowStyle(node.type, 'right'), ...getMarginStyle(indent)}}>
-             {indentSpace}
-             {rightShow ? formatPair(key, node.val2, typeRight, isLast && node.type !== DIFF_TYPES.ADDED) : ''}
+          <div key={`${node.path}-right`} style={{...styles.line, ...getRowStyle(node.type, 'right')}}>
+             <span>
+               {indentSpace}
+               {rightShow ? formatPair(key, node.val2, typeRight, isLast && node.type !== DIFF_TYPES.ADDED) : ''}
+             </span>
           </div>
         )
       });
@@ -190,16 +287,12 @@ export default function DiffView({ diffResult, stats, onReset }) {
             /> 
             {stats.changedValues} different values
           </label>
-          <label style={{ ...styles.label, ...styles.marginLabel }}>
-            <input 
-              type="checkbox" 
-              checked={showMargins} 
-              onChange={() => setShowMargins(!showMargins)}
-            /> 
-            Nested margins
-          </label>
         </div>
-        <button style={styles.btn} onClick={onReset}>Perform a new diff</button>
+        <div style={styles.actions}>
+          <button style={styles.actionBtn} onClick={expandAll}>Expand All</button>
+          <button style={styles.actionBtn} onClick={collapseAll}>Collapse All</button>
+          <button style={styles.btn} onClick={onReset}>Perform a new diff</button>
+        </div>
       </div>
 
       <div style={styles.editorWrap}>
@@ -271,6 +364,21 @@ const styles = {
     background: 'var(--diff-change-bg)',
     borderLeft: '4px solid var(--diff-change-border)'
   },
+  actions: {
+    display: 'flex',
+    gap: '0.5rem',
+    marginLeft: 'auto'
+  },
+  actionBtn: {
+    background: 'transparent',
+    border: '1px solid var(--border-color)',
+    color: 'var(--text-main)',
+    padding: '0.5rem 0.75rem',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+    transition: 'all 0.2s'
+  },
   marginLabel: {
     padding: '0.25rem 0.75rem',
     borderRadius: '4px',
@@ -314,7 +422,8 @@ const styles = {
     // We add transparent borders instead of 0 padding so the text doesn't shift
     height: '1.6em', // ensure empty lines maintain height
     display: 'flex', // ensure consistent height
-    alignItems: 'center'
+    alignItems: 'center',
+    position: 'relative'
   },
   jsonKey: {
     color: '#38bdf8'
@@ -332,5 +441,17 @@ const styles = {
   }),
   jsonComma: {
     color: 'var(--text-main)'
+  },
+  toggleIcon: {
+    position: 'absolute',
+    left: '4px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '12px',
+    textAlign: 'center',
+    cursor: 'pointer',
+    color: 'var(--text-muted)',
+    userSelect: 'none',
+    zIndex: 10
   }
 };
