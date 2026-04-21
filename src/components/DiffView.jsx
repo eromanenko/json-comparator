@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import { DIFF_TYPES } from '../utils/diff';
 
-export default function DiffView({ diffResult, stats, onReset }) {
+const DiffView = forwardRef(({ diffResult, stats, onReset, mode = 'diff' }, ref) => {
   const [showMissing, setShowMissing] = useState(true);
   const [showDifferentTypes, setShowDifferentTypes] = useState(true);
   const [showDifferentValues, setShowDifferentValues] = useState(true);
@@ -59,6 +59,11 @@ export default function DiffView({ diffResult, stats, onReset }) {
     }
   };
 
+  useImperativeHandle(ref, () => ({
+    expandAll,
+    collapseAll
+  }));
+
   // Checks if a node should be visible based on filters
   const isVisible = (type) => {
     if (type === DIFF_TYPES.UNCHANGED) return true;
@@ -70,7 +75,7 @@ export default function DiffView({ diffResult, stats, onReset }) {
 
   const renderVal = (val, type) => {
     if (val === undefined) return '';
-    if (type === 'string') return `"${val}"`;
+    if (type === 'string') return JSON.stringify(val);
     if (type === 'null') return 'null';
     if (type === 'array' || type === 'object') {
       try {
@@ -103,7 +108,7 @@ export default function DiffView({ diffResult, stats, onReset }) {
   // Helper to format key value pair
   const formatPair = (key, val, dataType, isLast) => (
     <>
-      {key !== null && <span style={styles.jsonKey}>"{key}"</span>}
+      {key !== null && <span style={styles.jsonKey}>{JSON.stringify(key)}</span>}
       {key !== null && <span style={styles.jsonColon}>: </span>}
       <span style={styles.jsonValue(dataType)}>{renderVal(val, dataType)}</span>
       {!isLast && <span style={styles.jsonComma}>,</span>}
@@ -112,7 +117,7 @@ export default function DiffView({ diffResult, stats, onReset }) {
 
   const indentSpaceFn = (indent) => '  '.repeat(indent);
 
-  const renderKey = (key) => key !== null ? <><span style={styles.jsonKey}>"{key}"</span><span style={styles.jsonColon}>: </span></> : null;
+  const renderKey = (key) => key !== null ? <><span style={styles.jsonKey}>{JSON.stringify(key)}</span><span style={styles.jsonColon}>: </span></> : null;
 
   const renderTreeRows = (node, indent = 0, key = null, isLast = true) => {
     const rows = [];
@@ -257,63 +262,66 @@ export default function DiffView({ diffResult, stats, onReset }) {
 
   return (
     <div className="diff-view animate-fade-in" style={styles.container}>
-      <div style={styles.toolbar}>
-        <div style={styles.stats}>
-          <span>Found {stats.total} differences</span>
+      {mode === 'diff' && (
+        <div style={styles.toolbar}>
+          <div style={styles.stats}>
+            <span>Found {stats.total} differences</span>
+          </div>
+          <div style={styles.filters}>
+            <span>Show:</span>
+            <label style={{ ...styles.label, ...styles.missingLabel }}>
+              <input 
+                type="checkbox" 
+                checked={showMissing} 
+                onChange={() => setShowMissing(!showMissing)}
+              /> 
+              {stats.missingProperties} missing properties
+            </label>
+            <label style={{ ...styles.label, ...styles.changeLabel }}>
+              <input 
+                type="checkbox" 
+                checked={showDifferentTypes} 
+                onChange={() => setShowDifferentTypes(!showDifferentTypes)}
+              /> 
+              {stats.incorrectTypes} different types
+            </label>
+            <label style={{ ...styles.label, ...styles.changeLabel }}>
+              <input 
+                type="checkbox" 
+                checked={showDifferentValues} 
+                onChange={() => setShowDifferentValues(!showDifferentValues)}
+              /> 
+              {stats.changedValues} different values
+            </label>
+          </div>
         </div>
-        <div style={styles.filters}>
-          <span>Show:</span>
-          <label style={{ ...styles.label, ...styles.missingLabel }}>
-            <input 
-              type="checkbox" 
-              checked={showMissing} 
-              onChange={() => setShowMissing(!showMissing)}
-            /> 
-            {stats.missingProperties} missing properties
-          </label>
-          <label style={{ ...styles.label, ...styles.changeLabel }}>
-            <input 
-              type="checkbox" 
-              checked={showDifferentTypes} 
-              onChange={() => setShowDifferentTypes(!showDifferentTypes)}
-            /> 
-            {stats.incorrectTypes} different types
-          </label>
-          <label style={{ ...styles.label, ...styles.changeLabel }}>
-            <input 
-              type="checkbox" 
-              checked={showDifferentValues} 
-              onChange={() => setShowDifferentValues(!showDifferentValues)}
-            /> 
-            {stats.changedValues} different values
-          </label>
-        </div>
-        <div style={styles.actions}>
-          <button style={styles.actionBtn} onClick={expandAll}>Expand All</button>
-          <button style={styles.actionBtn} onClick={collapseAll}>Collapse All</button>
-          <button style={styles.btn} onClick={onReset}>Perform a new diff</button>
-        </div>
-      </div>
+      )}
 
       <div style={styles.editorWrap}>
         <div 
-          style={{...styles.pane, ...styles.leftPane}} 
-          onScroll={handleScrollLeft} 
+          style={{...styles.pane, ...styles.leftPane, ...(mode === 'single' ? { borderRight: 'none' } : {})}} 
+          onScroll={mode === 'diff' ? handleScrollLeft : undefined} 
           ref={leftPaneRef}
         >
-          {treeRows.map(r => r.left)}
+          <div style={styles.paneContent}>
+            {treeRows.map(r => r.left)}
+          </div>
         </div>
-        <div 
-          style={styles.pane} 
-          onScroll={handleScrollRight} 
-          ref={rightPaneRef}
-        >
-          {treeRows.map(r => r.right)}
-        </div>
+        {mode === 'diff' && (
+          <div 
+            style={styles.pane} 
+            onScroll={handleScrollRight} 
+            ref={rightPaneRef}
+          >
+            <div style={styles.paneContent}>
+              {treeRows.map(r => r.right)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
-}
+});
 
 const styles = {
   container: {
@@ -364,38 +372,6 @@ const styles = {
     background: 'var(--diff-change-bg)',
     borderLeft: '4px solid var(--diff-change-border)'
   },
-  actions: {
-    display: 'flex',
-    gap: '0.5rem',
-    marginLeft: 'auto'
-  },
-  actionBtn: {
-    background: 'transparent',
-    border: '1px solid var(--border-color)',
-    color: 'var(--text-main)',
-    padding: '0.5rem 0.75rem',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '0.85rem',
-    transition: 'all 0.2s'
-  },
-  marginLabel: {
-    padding: '0.25rem 0.75rem',
-    borderRadius: '4px',
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid var(--border-color)',
-    marginLeft: 'auto' // push to the right edge
-  },
-  btn: {
-    background: 'transparent',
-    border: '1px solid var(--accent)',
-    color: 'var(--accent)',
-    padding: '0.5rem 1rem',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: '600',
-    transition: 'all 0.2s'
-  },
   editorWrap: {
     flex: '1',
     background: 'var(--bg-panel)',
@@ -413,6 +389,10 @@ const styles = {
     overflow: 'auto', // Both X and Y scrolling
     padding: '1rem 0',
     minWidth: 0, // necessary for flex children with auto overflow
+  },
+  paneContent: {
+    minWidth: 'max-content',
+    minHeight: '100%'
   },
   leftPane: {
     borderRight: '1px solid var(--border-color)',
@@ -455,3 +435,5 @@ const styles = {
     zIndex: 10
   }
 };
+
+export default DiffView;

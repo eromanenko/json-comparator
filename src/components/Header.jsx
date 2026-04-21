@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Header() {
+export default function Header({ showCompareBtn, onCompareClick, showDiffActions, onExpandAll, onCollapseAll, onEdit, mode }) {
   return (
     <header className="header" style={styles.header}>
       <div style={styles.titleContainer}>
@@ -8,6 +8,23 @@ export default function Header() {
         <span style={styles.versionBadge}>v0.4.1</span>
       </div>
       <p style={styles.subtitle}>Premium visual JSON differentiation</p>
+      <div style={styles.rightActions}>
+        {showDiffActions && (
+          <div style={styles.diffActions}>
+            <button style={styles.actionBtn} onClick={onExpandAll}>Expand All</button>
+            <button style={styles.actionBtn} onClick={onCollapseAll}>Collapse All</button>
+            <button style={styles.editBtn} onClick={onEdit}>
+              {mode === 'single' ? 'Edit JSON' : 'Perform a new diff'}
+            </button>
+          </div>
+        )}
+        
+        {showCompareBtn && (
+          <button style={styles.compareBtn} onClick={onCompareClick}>
+            Compare
+          </button>
+        )}
+      </div>
     </header>
   );
 }
@@ -48,5 +65,49 @@ const styles = {
   subtitle: {
     fontSize: '0.875rem',
     color: 'var(--text-muted)'
+  },
+  rightActions: {
+    marginLeft: 'auto',
+    display: 'flex',
+    gap: '1rem',
+    alignItems: 'center'
+  },
+  compareBtn: {
+    background: 'var(--accent)',
+    color: 'white',
+    border: 'none',
+    padding: '0.5rem 1.5rem',
+    fontSize: '0.9rem',
+    fontWeight: '600',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.4)',
+  },
+  diffActions: {
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'center'
+  },
+  actionBtn: {
+    background: 'transparent',
+    border: '1px solid var(--border-color)',
+    color: 'var(--text-main)',
+    padding: '0.5rem 0.75rem',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+    transition: 'all 0.2s'
+  },
+  editBtn: {
+    background: 'transparent',
+    border: '1px solid var(--accent)',
+    color: 'var(--accent)',
+    padding: '0.5rem 1rem',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    transition: 'all 0.2s',
+    marginLeft: '0.5rem'
   }
 };

@@ -1,86 +1,95 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 
-export default function InputView({ json1, setJson1, error1, json2, setJson2, error2, onCompare }) {
-  const file1Ref = useRef(null);
-  const file2Ref = useRef(null);
+export default function InputView({ step, title = '', value, onChange, onAction, actionText, externalError }) {
+  const fileRef = useRef(null);
+  const [localError, setLocalError] = useState(null);
 
-  const handleFileUpload = (e, setter) => {
+  const error = externalError || localError;
+
+  // Clear local error when value changes manually via typing
+  useEffect(() => {
+    if (localError) setLocalError(null);
+  }, [value]);
+
+  const validateAndProceed = (text) => {
+    try {
+      JSON.parse(text || '{}');
+      onChange(text);
+      setLocalError(null);
+      onAction(text);
+    } catch (e) {
+      onChange(text);
+      setLocalError('Invalid JSON formatting. Please check the text.');
+      // Optional: show a real popup or toast here
+      alert('Invalid JSON formatting! Please fix the errors before continuing.');
+    }
+  };
+
+  const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (e) => setter(e.target.result);
+    reader.onload = (e) => {
+      const text = e.target.result;
+      validateAndProceed(text);
+    };
     reader.readAsText(file);
     e.target.value = null; // reset
   };
 
+  const handlePaste = (e) => {
+    // Get pasted data
+    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+    if (!pastedText) return;
+    
+    // Check if it's valid JSON
+    try {
+      JSON.parse(pastedText);
+      // Valid JSON! Auto-proceed.
+      e.preventDefault(); // Prevent normal paste
+      validateAndProceed(pastedText);
+    } catch (err) {
+      // Not valid JSON. Let it paste normally, but maybe set error
+      setLocalError('Pasted text is not valid JSON.');
+    }
+  };
+
   return (
     <div className="input-view animate-fade-in" style={styles.container}>
-      <div style={styles.panelsContainer}>
-        
-        {/* Left Panel */}
+      <div style={styles.centerWrapper}>
         <div style={styles.panel}>
           <div style={styles.panelHeader}>
-            <h3>Original JSON</h3>
+            <h3>{title}</h3>
             <button 
               style={styles.fileBtn} 
-              onClick={() => file1Ref.current.click()}
+              onClick={() => fileRef.current.click()}
             >
               Choose File
             </button>
             <input 
               type="file" 
               accept=".json" 
-              ref={file1Ref} 
-              onChange={(e) => handleFileUpload(e, setJson1)}
+              ref={fileRef} 
+              onChange={handleFileUpload}
               style={{ display: 'none' }}
             />
           </div>
           <textarea
             className="json-editor"
-            style={{...styles.textarea, borderColor: error1 ? '#ef4444' : 'var(--border-color)'}}
-            value={json1}
-            onChange={(e) => setJson1(e.target.value)}
-            placeholder="Paste original JSON here..."
+            style={{...styles.textarea, borderColor: error ? '#ef4444' : 'var(--border-color)'}}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onPaste={handlePaste}
+            placeholder={`Paste ${title.toLowerCase()} here...`}
           />
-          {error1 && <div style={styles.error}>{error1}</div>}
+          {error && <div style={styles.error}>{error}</div>}
         </div>
 
-        {/* Action Center */}
         <div style={styles.actionCenter}>
-          <button style={styles.compareBtn} onClick={onCompare}>
-            Compare
+          <button style={styles.actionBtn} onClick={() => validateAndProceed(value)}>
+            {actionText}
           </button>
-          <div style={styles.sampleText}>or paste text directly</div>
         </div>
-
-        {/* Right Panel */}
-        <div style={styles.panel}>
-          <div style={styles.panelHeader}>
-            <h3>Modified JSON</h3>
-            <button 
-              style={styles.fileBtn} 
-              onClick={() => file2Ref.current.click()}
-            >
-              Choose File
-            </button>
-            <input 
-              type="file" 
-              accept=".json" 
-              ref={file2Ref} 
-              onChange={(e) => handleFileUpload(e, setJson2)}
-              style={{ display: 'none' }}
-            />
-          </div>
-          <textarea
-            className="json-editor"
-            style={{...styles.textarea, borderColor: error2 ? '#ef4444' : 'var(--border-color)'}}
-            value={json2}
-            onChange={(e) => setJson2(e.target.value)}
-            placeholder="Paste modified JSON here..."
-          />
-          {error2 && <div style={styles.error}>{error2}</div>}
-        </div>
-
       </div>
     </div>
   );
@@ -90,12 +99,17 @@ const styles = {
   container: {
     padding: '2rem',
     height: 'calc(100vh - 80px)', // assuming header is ~80px
-  },
-  panelsContainer: {
     display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  centerWrapper: {
+    display: 'flex',
+    flexDirection: 'column',
     gap: '2rem',
-    height: '100%',
-    alignItems: 'stretch'
+    width: '100%',
+    maxWidth: '800px',
+    height: '80%'
   },
   panel: {
     flex: '1',
@@ -138,27 +152,19 @@ const styles = {
   },
   actionCenter: {
     display: 'flex',
-    flexDirection: 'column',
     justifyContent: 'center',
-    alignItems: 'center',
-    gap: '1rem'
   },
-  compareBtn: {
+  actionBtn: {
     background: 'var(--accent)',
     color: 'white',
     border: 'none',
-    padding: '0.75rem 2rem',
-    fontSize: '1rem',
+    padding: '0.75rem 3rem',
+    fontSize: '1.1rem',
     fontWeight: '600',
     borderRadius: '8px',
     cursor: 'pointer',
     transition: 'all 0.2s',
     boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.4)',
-  },
-  sampleText: {
-    fontSize: '0.8rem',
-    color: 'var(--text-muted)',
-    textAlign: 'center'
   },
   error: {
     color: '#ef4444',
